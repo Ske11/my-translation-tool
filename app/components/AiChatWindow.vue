@@ -34,9 +34,29 @@
             </div>
 
             <div :class="['msg-bubble', m.role === 'user' ? 'bubble-user' : 'bubble-ai']">
+              <div v-if="m.role !== 'user'" class="bubble-actions">
+                <el-button-group>
+                  <el-tooltip
+                    effect="dark"
+                    content="复制最终版本"
+                    placement="top"
+                    :show-after="500"
+                  >
+                    <el-button
+                      size="small"
+                      link
+                      :disabled="isWorking"
+                      @click="handleCopy(m, mode)"
+                    >
+                      <template #icon>
+                        <el-icon><Copy /></el-icon>
+                      </template>
+                    </el-button>
+                  </el-tooltip>
+                </el-button-group>
+              </div>
               <template v-for="(part, pIdx) in m.parts" :key="pIdx">
-                <div v-if="part.type === 'text'" class="whitespace-pre-wrap break-words">
-                  {{ part.text }}
+                <div v-if="part.type === 'text'" class="markdown-body" v-html="m.role !== 'user' ? renderMarkdown(part.text) : part.text">
                 </div>
               </template>
             </div>
@@ -58,6 +78,7 @@
           <el-input
             v-model="input"
             type="textarea"
+            :loading="isWorking"
             :autosize="{ minRows: 1, maxRows: 6 }"
             placeholder="粘贴内容或输入指令..."
             resize="none"
@@ -65,6 +86,14 @@
             @keydown.enter.prevent="handleSend"
           />
           <div class="flex justify-end mt-1">
+            <el-button 
+              v-if="isWorking" 
+              type="warning" 
+              circle 
+              @click="chat.stop()"
+            >
+              <Square :size="14" />
+            </el-button>
             <el-button 
               type="primary" 
               circle
@@ -84,8 +113,9 @@
 <script setup lang="ts">
 import { Chat } from "@ai-sdk/vue";
 import { ref, watch, nextTick, computed } from "vue";
-import { Send, Bot, User, Loader2, Eraser, Sparkles } from "lucide-vue-next";
+import { Send, Bot, User, Loader2, Eraser, Sparkles, Square, Copy, Check } from "lucide-vue-next";
 import type { UIMessage } from "ai";
+import MarkdownIt from "markdown-it";
 
 interface Props {
   mode: 'polish' | 'translate' | 'general';
@@ -109,26 +139,97 @@ const handleSend = async () => {
   const text = input.value.trim();
   if (!text || isWorking.value) return;
   try {
+    input.value = "";
     await chat.sendMessage(
       { text },
       { body: { mode: props.mode } } );
-    input.value = ""; 
   } catch (e) {
+    // 发送失败，还原消息
+    input.value = text;
     console.error("AI 发送异常:", e);
   }
 };
 
-// 自动滚动逻辑
-watch(() => chat.messages.length, () => {
-  nextTick(() => {
-    if (scrollContainer.value?.wrapRef) {
-      const inner = scrollContainer.value.wrapRef;
-      inner.scrollTo({ top: inner.scrollHeight, behavior: 'smooth' });
-    }
-  });
-}, { deep: true });
+watch(
+  () => chat.messages, 
+  () => {
+    nextTick(() => {
+      const container = scrollContainer.value?.$el?.querySelector('.el-scrollbar__wrap');
+      if (container) {
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: 'smooth'
+        });
+      }
+    });
+  }, 
+  { deep: true }
+);
 
 const clearChat = () => { chat.messages = []; };
+
+const md = new MarkdownIt({
+  html: true,    // 允许 HTML 标签，这样才能渲染 del/ins
+  linkify: true,
+  breaks: true
+})
+
+const renderMarkdown = (content: string) => {
+  return md.render(content)
+}
+
+
+const getMessageText = (m: any) => {
+  if (!m) return '';
+  // 优先处理 parts 数组
+  if (Array.isArray(m.parts)) {
+    return m.parts.map(p => typeof p === 'string' ? p : p.text || '').join('');
+  }
+  return m.content || '';
+};
+
+const getCleanText = (text: string) => {
+  if (!text) return '';
+
+  // 1. 先把可能存在的转义字符还原回来，确保正则能匹配到标签
+  let decoded = text
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"');
+
+  // 2. 执行清洗：删除 <del> 内容，保留 <ins> 内容
+  let clean = decoded
+    .replace(/<del>([\s\S]*?)<\/del>/g, '')  // 移除删除线内容
+    .replace(/<ins>([\s\S]*?)<\/ins>/g, '$1') // 提取新增内容
+    .replace(/<[^>]*>?/gm, '');              // 过滤掉所有残余标签
+
+  // 3. 移除 Markdown 的加粗、斜体符号（可选，让粘贴出的文字更纯净）
+  clean = clean.replace(/[*_~`#]/g, '');
+
+  return clean.trim();
+};
+
+// 一键复制功能
+const handleCopy = async (text: string, mode: string) => {
+  const rawText = getMessageText(text);
+  console.log(rawText, getCleanText(rawText))
+
+  const final = mode === 'polish' ? getCleanText(rawText): rawText;
+  if (!final) {
+    ElMessage.warning('内容尚未生成完毕');
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(final);
+    ElMessage({
+      message: mode === 'polish' ? '已复制润色后的纯净版本': '已复制翻译结果',
+      type: 'success',
+      plain: true,
+    });
+  } catch (err) {
+    ElMessage.error('复制失败，请手动选择');
+  }
+};
 </script>
 
 <style scoped>
@@ -248,5 +349,98 @@ const clearChat = () => { chat.messages = []; };
   background: #ffffff;
   border-bottom: 1px solid #f8fafc;
   padding: 12px 20px;
+}
+
+:deep(.markdown-body) {
+  word-break: break-word;
+  font-size: 14px;
+  line-height: 1.6;
+}
+:deep(.markdown-body :not(:first-child p)) {
+  margin-top: 8px;
+}
+:deep(.markdown-body code) {
+  background-color: #f1f5f9;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-family: monospace;
+}
+:deep(.markdown-body ul) {
+  padding-left: 20px;
+  list-style-type: disc;
+}
+
+/* 润色模式下的差异显示样式 */
+
+/* 删除的内容：红色背景，带删除线 */
+:deep(del) {
+  background-color: #fee2e2; /* 浅红色 */
+  color: #b91c1c;           /* 深红色文字 */
+  text-decoration: line-through;
+  padding: 0 2px;
+  border-radius: 2px;
+  margin: 0 1px;
+}
+
+/* 新增的内容：绿色背景，下划线或加粗 */
+:deep(ins) {
+  background-color: #dcfce7; /* 浅绿色 */
+  color: #15803d;           /* 深绿色文字 */
+  text-decoration: none;
+  font-weight: 600;
+  padding: 0 2px;
+  border-radius: 2px;
+  margin: 0 1px;
+}
+
+.msg-bubble {
+  position: relative; /* 必须，为了让工具栏绝对定位 */
+}
+
+/* 工具栏容器 */
+.bubble-actions {
+  position: absolute;
+  top: 4px;
+  right: 12px;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  background-color: rgba(255, 255, 255, 0.9);
+  border-radius: 6px;
+  padding: 2px 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  backdrop-filter: blur(4px);
+  z-index: 10;
+}
+
+/* 鼠标悬停气泡时显示工具栏 */
+.msg-bubble:hover .bubble-actions {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* 修正 Markdown 渲染后的 p 标签边距
+:deep(.markdown-body p:first-child) {
+  margin-top: 0;
+} */
+
+.action-btn {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  transition: all 0.2s;
+}
+.action-btn:hover {
+  color: #4f46e5;
+  border-color: #c7d2fe;
+  background-color: #f8fafc;
 }
 </style>

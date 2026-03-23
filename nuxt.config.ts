@@ -1,4 +1,3 @@
-// https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
@@ -9,12 +8,17 @@ export default defineNuxtConfig({
   elementPlus: {
     importStyle: 'css',
   },
+  build: {
+    transpile: ['element-plus'],
+  },
   vite: {
     optimizeDeps: {
       include: [
-        'dayjs/plugin/*.js',
+        'dayjs',
         'lucide-vue-next',
-      ]
-    }
-  }
+        '@ai-sdk/vue',
+        'markdown-it',
+      ],
+    },
+  },
 })
