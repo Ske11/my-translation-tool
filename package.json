@@ -11,12 +11,20 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.47",
+    "@ai-sdk/openai-compatible": "^2.0.37",
     "@ai-sdk/vue": "^3.0.134",
+    "@element-plus/icons-vue": "^2.3.2",
     "@nuxtjs/tailwindcss": "6.14.0",
     "@vueuse/nuxt": "14.2.1",
     "ai": "^6.0.134",
+    "element-plus": "^2.13.6",
+    "lucide-vue-next": "^0.577.0",
     "nuxt": "^4.4.2",
     "vue": "^3.5.30",
     "vue-router": "^5.0.3"
+  },
+  "devDependencies": {
+    "@element-plus/nuxt": "^1.1.5",
+    "@types/node": "^25.5.0"
   }
 }
