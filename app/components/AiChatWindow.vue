@@ -15,7 +15,7 @@
       </div>
     </template>
 
-    <div class="flex flex-col h-[600px] bg-slate-50/50">
+    <div v-if="sessionId" class="flex flex-col h-[700px] bg-slate-50/50">
       <el-scrollbar ref="scrollContainer" class="flex-1">
         <div class="p-5 flex flex-col gap-6">
           
@@ -116,17 +116,20 @@ import { ref, watch, nextTick, computed } from "vue";
 import { Send, Bot, User, Loader2, Eraser, Sparkles, Square, Copy, Check } from "lucide-vue-next";
 import type { UIMessage } from "ai";
 import MarkdownIt from "markdown-it";
+import { useChatStore } from "../../stores/chatStore"
 
 interface Props {
   mode: 'polish' | 'translate' | 'general';
   title?: string;
+  sessionId: string;
 }
 
 const props = defineProps<Props>();
+const chatStore = useChatStore();
 
 // 初始化 AI SDK 6.x 实例
 const chat = new Chat({
-  messages: [] as UIMessage[]
+  messages: (chatStore.sessions.find(s => s.id === props.sessionId)?.messages || []) as UIMessage[]
 });
 
 // 状态判断：基于 6.x 的 status 字段
@@ -138,6 +141,10 @@ const scrollContainer = ref<any>(null);
 const handleSend = async () => {
   const text = input.value.trim();
   if (!text || isWorking.value) return;
+  // 如果是当前会话的第一条消息，更新 Store 里的标题
+  if (chat.messages.length === 0) {
+    chatStore.updateTitleFromMessage(chatStore.currentSessionId, input.value);
+  }
   try {
     input.value = "";
     await chat.sendMessage(
@@ -166,7 +173,27 @@ watch(
   { deep: true }
 );
 
-const clearChat = () => { chat.messages = []; };
+// 核心同步逻辑：监听消息变化
+watch(
+  () => chat.messages, 
+  (newVal) => {
+    if (newVal && newVal.length > 0) {
+      // 1. 同步消息数组到本地存储
+      chatStore.updateSessionMessages(props.sessionId, newVal);
+      
+      // 2. 如果是第一条用户消息，尝试更新标题
+      const firstUserMsg = newVal.find(m => m.role === 'user');
+      if (firstUserMsg) {
+        chatStore.updateTitleFromMessage(props.sessionId, firstUserMsg.parts);
+      }
+    }
+  }, 
+  { deep: true }
+);
+
+const clearChat = () => { 
+  chat.messages = [];
+};
 
 const md = new MarkdownIt({
   html: true,    // 允许 HTML 标签，这样才能渲染 del/ins
@@ -230,6 +257,19 @@ const handleCopy = async (text: string, mode: string) => {
     ElMessage.error('复制失败，请手动选择');
   }
 };
+
+onMounted(() => {
+  if (!chatStore.currentSessionId) {
+    chatStore.createNewSession(props.mode);
+  } else {
+    // 如果有，加载历史消息到 Chat 实例（取决于你 SDK 的加载方式）
+    const current = chatStore.sessions.find(s => s.id === chatStore.currentSessionId);
+    if (current) {
+        // 这里的逻辑根据你具体的 Chat 实例初始化方式调整
+        // chat.setMessages(current.messages);
+    }
+  }
+});
 </script>
 
 <style scoped>

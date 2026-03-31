@@ -15,6 +15,12 @@ const SYSTEM_PROMPTS = {
     general: "你是一个全能的 AI 智能助手，请用专业、友好的语气回答用户的问题。"
   };
 
+const TEMPERATURES = {
+    polish: 0.5,
+    translate: 0.1,
+    general: 1.0
+};
+
 export default defineEventHandler(async (event) => {
     
     try {
@@ -41,7 +47,8 @@ export default defineEventHandler(async (event) => {
         const result = streamText({
             model: deepseek('deepseek-chat'), 
             system: systemPrompt,
-            messages: contextMessages
+            messages: contextMessages,
+            temperature: TEMPERATURES[mode as keyof typeof TEMPERATURES] || TEMPERATURES.general
         });
       
         return result.toUIMessageStreamResponse();

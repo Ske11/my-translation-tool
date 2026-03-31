@@ -4,7 +4,11 @@ export default defineNuxtConfig({
   runtimeConfig: {
     deepseekApiKey: process.env.DEEPSEEK_API_KEY,
   },
-  modules: ['@element-plus/nuxt', '@nuxtjs/tailwindcss', '@vueuse/nuxt'],
+  modules: ['@element-plus/nuxt', '@nuxtjs/tailwindcss', '@vueuse/nuxt', '@pinia/nuxt', '@pinia-plugin-persistedstate/nuxt'],
+  // 显式指定，确保插件正常初始化
+  piniaPersistedstate: {
+    storage: 'localStorage'
+  },
   elementPlus: {
     importStyle: 'css',
   },
